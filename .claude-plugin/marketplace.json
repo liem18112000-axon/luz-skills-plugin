@@ -1,0 +1,21 @@
+{
+  "name": "luz-skills",
+  "owner": {
+    "name": "theLiems",
+    "email": "liem18112000@gmail.com"
+  },
+  "metadata": {
+    "description": "Skills bundle for Luz / GKE / Google Cloud / Claude Code workflows",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "luz-skills",
+      "source": "./",
+      "description": "Personal and team skills for Luz / GKE / Google Cloud / Claude Code workflows",
+      "version": "0.1.0",
+      "category": "development",
+      "keywords": ["luz", "gke", "google-cloud", "kubernetes", "claude-code", "skills"]
+    }
+  ]
+}

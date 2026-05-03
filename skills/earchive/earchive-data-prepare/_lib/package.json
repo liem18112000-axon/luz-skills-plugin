@@ -1,0 +1,10 @@
+{
+  "name": "earchive-data-prepare",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Synthetic eArchive folder/document generator for Luz dev tenants.",
+  "main": "prepare_data.js",
+  "dependencies": {
+    "mongodb": "^6.8.0"
+  }
+}

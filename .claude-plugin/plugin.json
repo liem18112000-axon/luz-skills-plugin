@@ -1,0 +1,20 @@
+{
+  "name": "luz-skills",
+  "description": "Personal and team skills for Luz / GKE / Google Cloud / Claude Code workflows",
+  "version": "0.1.0",
+  "author": {
+    "name": "theLiems",
+    "email": "liem18112000@gmail.com"
+  },
+  "license": "MIT",
+  "keywords": ["luz", "gke", "google-cloud", "kubernetes", "claude-code", "skills"],
+  "skills": [
+    "./skills/luz-skill/",
+    "./skills/google-skill/",
+    "./skills/claude/",
+    "./skills/earchive/",
+    "./skills/ngrok/",
+    "./skills/playwright/",
+    "./skills/code/"
+  ]
+}
