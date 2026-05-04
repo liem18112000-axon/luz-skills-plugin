@@ -1,6 +1,6 @@
 ---
 name: google-skill-rollout-latest
-description: Roll a Kubernetes StatefulSet to the most recently uploaded image tag in Google Artifact Registry. Use when the user asks to "deploy latest", "rollout latest", "sync StatefulSet to GAR", or "update <sts> to the newest image". Only STATEFULSET is required — org defaults (klara-repo / klara-nonprod / dev / europe-west6) auto-fill the rest, and CONTAINER + ARTIFACT_IMAGE default to the STATEFULSET name. If the StatefulSet is already at the latest tag, the script does a `kubectl rollout restart` instead of mutating the spec. Otherwise it updates both the live container spec and the kubectl.kubernetes.io/last-applied-configuration annotation so future kubectl apply runs do not compute a bogus diff. Cross-platform — ships a Windows .cmd and a POSIX .sh runner.
+description: Roll a Kubernetes StatefulSet to the most recently uploaded image tag in Google Artifact Registry. Use when the user asks to "deploy latest", "rollout latest", "sync StatefulSet to GAR", or "update <sts> to the newest image". Only STATEFULSET is required — org defaults (klara-repo / klara-nonprod / dev / europe-west6) auto-fill the rest, and CONTAINER + ARTIFACT_IMAGE default to the STATEFULSET name. If the StatefulSet is already at the latest tag, the script does a `kubectl rollout restart` instead of mutating the spec. Otherwise it updates both the live container spec and the kubectl.kubernetes.io/last-applied-configuration annotation so future kubectl apply runs do not compute a bogus diff. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # google-skill-rollout-latest
@@ -44,24 +44,16 @@ The defaults match the klara setup. To roll a different StatefulSet to the same 
 
 ## How to invoke
 
-Pick the runner that matches the user's platform. Both share the same env-var contract and the same defaults.
+### Invocation (bash)
 
-### Windows (cmd / PowerShell)
-Path: `%USERPROFILE%\.claude\skills\google-skill-rollout-latest\rollout_latest.cmd`
-
-Common case (everything else defaults):
-```cmd
-"%USERPROFILE%\.claude\skills\google-skill-rollout-latest\rollout_latest.cmd" luz-docs
-```
-
-Override anything via env first:
-```cmd
-set NAMESPACE=staging
-"%USERPROFILE%\.claude\skills\google-skill-rollout-latest\rollout_latest.cmd" luz-docs
-```
-
-### Linux / macOS (bash / zsh)
 Path: `~/.claude/skills/google-skill-rollout-latest/rollout_latest.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/google-skill-rollout-latest/rollout_latest.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/google-skill-rollout-latest/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
 
 ```bash
 # Common case
@@ -75,10 +67,7 @@ ARTIFACT_IMAGE=other-image CONTAINER=other-container \
   ~/.claude/skills/google-skill-rollout-latest/rollout_latest.sh luz-docs
 ```
 
-Requires `gcloud`, `kubectl`, and `sed` on PATH. The `.sh` runner uses `set -euo pipefail`; the `.cmd` runner uses delayed expansion. Both print the resolved parameter set before mutating anything.
-
-### Cross-platform on Windows (Git Bash / WSL)
-From a bash-on-Windows shell, prefer the `.sh` script. If you must invoke the `.cmd`, use `cmd.exe //c "C:\\...\\rollout_latest.cmd" luz-docs`.
+Requires `gcloud`, `kubectl`, and `sed` on PATH. The `.sh` runner uses `set -euo pipefail` and prints the resolved parameter set before mutating anything.
 
 ## What the script does (5 steps)
 

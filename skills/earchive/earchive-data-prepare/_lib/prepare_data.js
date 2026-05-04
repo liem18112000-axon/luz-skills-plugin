@@ -3,8 +3,7 @@
 //                   exit 0 on primary, exit 2 on secondary, exit 1 on error.
 //   (default)     — assumes already on primary, then truncate + regenerate.
 
-const { MongoClient } = require('mongodb');
-const crypto = require('crypto');
+const { MongoClient, ObjectId } = require('mongodb');
 
 const tenantId           = process.env.TENANT_ID || 'a5e06d74-137c-4a9e-9adc-9eccdccc2d17';
 const docCount           = parseInt(process.env.DOC_COUNT || '128000', 10);
@@ -20,12 +19,11 @@ const PROBE_COLLECTION   = '_earchive_data_prepare_probe';
 const uri = `mongodb://${tenantId}:${tenantId}@localhost:${port}/${tenantId}`
     + `?authSource=${tenantId}&readPreference=primary&ssl=false&directConnection=true`;
 
-const uuid       = () => crypto.randomUUID();
 const randInt    = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 async function probe(db) {
-    const probeId = uuid();
+    const probeId = new ObjectId();
     try {
         await db.collection(PROBE_COLLECTION).insertOne({ _id: probeId, ts: new Date() });
         await db.collection(PROBE_COLLECTION).drop().catch(() => {});
@@ -41,7 +39,7 @@ async function probe(db) {
 
 function buildFolderTree(count, maxDepth) {
     const folders = [];
-    const ids = Array.from({ length: count }, () => uuid());
+    const ids = Array.from({ length: count }, () => new ObjectId());
     const depth = new Array(count).fill(0);
     const rootCount = Math.max(1, Math.ceil(count / Math.pow(2, maxDepth)));
 
@@ -105,7 +103,9 @@ async function generate(db) {
     }
     console.log(`[prepare] folders inserted: ${folders.length}`);
 
-    const folderIds = folders.map((f) => f._id);
+    // folderIds on documents are stored as 24-char hex strings (matches data/index.js
+    // and the `folderIds: <string-id>` query convention used by luz-docs).
+    const folderHexIds = folders.map((f) => f._id.toString());
     const now = new Date();
     let inserted = 0;
     const t1 = Date.now();
@@ -113,11 +113,11 @@ async function generate(db) {
         const toGen = Math.min(batchSize, docCount - inserted);
         const batch = new Array(toGen);
         for (let i = 0; i < toGen; i++) {
-            const numFolders = randInt(1, Math.min(maxFoldersPerDoc, folderIds.length));
+            const numFolders = randInt(1, Math.min(maxFoldersPerDoc, folderHexIds.length));
             const docFolders = new Set();
-            while (docFolders.size < numFolders) docFolders.add(pickRandom(folderIds));
+            while (docFolders.size < numFolders) docFolders.add(pickRandom(folderHexIds));
             batch[i] = {
-                _id: uuid(),
+                _id: new ObjectId(),
                 folderIds: Array.from(docFolders),
                 _updatedDate: now,
                 _deletionStatus: 'false',

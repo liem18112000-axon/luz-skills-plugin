@@ -1,6 +1,6 @@
 ---
 name: google-skill-trigger-cloud-build
-description: Run a Google Cloud Build trigger by name. Use when the user asks to "trigger build", "kick off Cloud Build", "rebuild image", or "run the <X> trigger on branch <Y>". Only TRIGGER_NAME is required — org defaults (klara-infra / europe-west6) auto-fill project and region, BRANCH defaults to the current git branch, and the skill short-circuits if the local HEAD SHA already exists as the latest tag in Artifact Registry. Cross-platform — ships a Windows .cmd and a POSIX .sh runner.
+description: Run a Google Cloud Build trigger by name. Use when the user asks to "trigger build", "kick off Cloud Build", "rebuild image", or "run the <X> trigger on branch <Y>". Only TRIGGER_NAME is required — org defaults (klara-infra / europe-west6) auto-fill project and region, BRANCH defaults to the current git branch, and the skill short-circuits if the local HEAD SHA already exists as the latest tag in Artifact Registry. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # google-skill-trigger-cloud-build
@@ -42,22 +42,16 @@ This avoids burning Cloud Build minutes when the latest pushed image already cor
 
 ## How to invoke
 
-### Windows (cmd / PowerShell)
-Path: `%USERPROFILE%\.claude\skills\google-skill-trigger-cloud-build\trigger_build.cmd`
+### Invocation (bash)
 
-Common case (project / region / branch all default):
-```cmd
-"%USERPROFILE%\.claude\skills\google-skill-trigger-cloud-build\trigger_build.cmd" luz-docs
-```
-
-Override anything via env first:
-```cmd
-set BRANCH=master
-"%USERPROFILE%\.claude\skills\google-skill-trigger-cloud-build\trigger_build.cmd" luz-docs
-```
-
-### Linux / macOS (bash / zsh)
 Path: `~/.claude/skills/google-skill-trigger-cloud-build/trigger_build.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/google-skill-trigger-cloud-build/trigger_build.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/google-skill-trigger-cloud-build/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
 
 ```bash
 # Common case

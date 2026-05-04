@@ -1,0 +1,1 @@
+Database needs index. Query is currently slow because the table has 50000000 rows. We will use a hash map for fast lookup. The function `get_user(id)` returns user data. See https://example.com/api/v2 for the schema. Ensure to test with at least 15 concurrent connections.

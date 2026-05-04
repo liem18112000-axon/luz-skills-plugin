@@ -1,6 +1,6 @@
 ---
 name: luz-skill-ship
-description: Commit (if staged) → push (if local diverges) → trigger Cloud Build → poll until done → rollout the StatefulSet to the new image. End-to-end ship for a Luz feature branch in one command. Use when the user wants to "ship this", "commit and deploy", "build and rollout", or any equivalent. The skill auto-skips commit when nothing is staged and auto-skips push when origin already matches HEAD, so it is also safe to re-run for a build+rollout-only pass (e.g. after a manual squash + force-push). Commit message is mandatory only when staged changes are being committed; it goes in verbatim with no AI / Co-Authored-By trailer. Set `FORCE_PUSH=1` after a squash/amend to push with `--force-with-lease`. The skill DOES NOT run `git add` for you (won't sweep up unrelated dirty files); stage what you want first. Defaults to trigger=`luz-docs`, statefulset=`luz-docs`. Retries the build trigger on transient `FAILED_PRECONDITION: Couldn't read commit` errors caused by Bitbucket→Cloud Build sync lag. Cross-platform — ships a Windows .cmd wrapper and a POSIX .sh runner.
+description: Commit (if staged) → push (if local diverges) → trigger Cloud Build → poll until done → rollout the StatefulSet to the new image. End-to-end ship for a Luz feature branch in one command. Use when the user wants to "ship this", "commit and deploy", "build and rollout", or any equivalent. The skill auto-skips commit when nothing is staged and auto-skips push when origin already matches HEAD, so it is also safe to re-run for a build+rollout-only pass (e.g. after a manual squash + force-push). Commit message is mandatory only when staged changes are being committed; it goes in verbatim with no AI / Co-Authored-By trailer. Set `FORCE_PUSH=1` after a squash/amend to push with `--force-with-lease`. The skill DOES NOT run `git add` for you (won't sweep up unrelated dirty files); stage what you want first. Defaults to trigger=`luz-docs`, statefulset=`luz-docs`. Retries the build trigger on transient `FAILED_PRECONDITION: Couldn't read commit` errors caused by Bitbucket→Cloud Build sync lag. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # luz-skill-ship
@@ -44,8 +44,16 @@ In a typical session your working tree has dirty unrelated files (local `.gitign
 
 ## How to invoke
 
-### Linux / macOS / Git Bash
+### Invocation (bash)
+
 Path: `~/.claude/skills/luz-skill-ship/ship.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/luz-skill-ship/ship.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/luz-skill-ship/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
 
 ```bash
 # Common case
@@ -63,9 +71,6 @@ SKIP_ROLLOUT=1 ~/.claude/skills/luz-skill-ship/ship.sh "[LUZ-152936] try a thing
 STATEFULSET=luz-docs-process TRIGGER_NAME=luz-docs-process \
   ~/.claude/skills/luz-skill-ship/ship.sh "[LUZ-200000] process fix"
 ```
-
-### Windows native cmd / PowerShell
-Path: `%USERPROFILE%\.claude\skills\luz-skill-ship\ship.cmd` — shells out to bash.
 
 ## What the script does
 

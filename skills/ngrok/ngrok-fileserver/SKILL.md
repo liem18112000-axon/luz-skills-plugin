@@ -1,6 +1,6 @@
 ---
 name: ngrok-fileserver
-description: Spin up a tiny Python HTTP server with markdown rendering over a folder, then expose it publicly via ngrok. File-explorer-style directory listing; renders .md to HTML; lets the browser preview images, PDFs, videos; inlines .txt/.log/.json/.yml. Use when the user wants to "share this folder", "expose <dir> via ngrok", "give me a public URL for <folder>", "let me see the screenshots from my phone", or any equivalent. Auto-installs python + ngrok where possible; refuses to start until ngrok authtoken is configured. Cross-platform — ships a Windows .cmd and a POSIX .sh runner.
+description: Spin up a tiny Python HTTP server with markdown rendering over a folder, then expose it publicly via ngrok. File-explorer-style directory listing; renders .md to HTML; lets the browser preview images, PDFs, videos; inlines .txt/.log/.json/.yml. Use when the user wants to "share this folder", "expose <dir> via ngrok", "give me a public URL for <folder>", "let me see the screenshots from my phone", or any equivalent. Auto-installs python + ngrok where possible; refuses to start until ngrok authtoken is configured. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # ngrok-fileserver
@@ -24,8 +24,9 @@ Foreground command — runs until you Ctrl-C. Two processes are started: `python
 ```
 ngrok-fileserver/
 ├── SKILL.md
-├── bootstrap.cmd / bootstrap.sh    (verify python + ngrok, install where possible, check authtoken)
-├── serve.cmd     / serve.sh        (main entry — starts python server then ngrok)
+├── ensure-bash.ps1                 (one-time Windows bash bootstrap — installs Git for Windows via winget if bash is missing)
+├── bootstrap.sh                    (verify python + ngrok, install where possible, check authtoken)
+├── serve.sh                        (main entry — starts python server then ngrok)
 └── _lib/
     └── server.py                   (stdlib HTTP handler with .md → HTML, inline text)
 ```
@@ -39,9 +40,20 @@ ngrok-fileserver/
 
 ## How to invoke
 
+### Invocation (bash)
+
+Path: `~/.claude/skills/ngrok-fileserver/serve.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/ngrok-fileserver/serve.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/ngrok-fileserver/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
+
 ### Step 0 — Bootstrap
 
-```
+```bash
 ~/.claude/skills/ngrok-fileserver/bootstrap.sh
 ```
 
@@ -49,7 +61,6 @@ Checks `python`, `ngrok`, `ngrok config check` (authtoken), and the `markdown` p
 
 ### Step 1 — Serve
 
-#### POSIX (preferred):
 ```bash
 ~/.claude/skills/ngrok-fileserver/serve.sh "/abs/path/to/folder"
 
@@ -61,14 +72,6 @@ LOCAL_ONLY=1 ~/.claude/skills/ngrok-fileserver/serve.sh "/path"
 
 # EU region
 NGROK_REGION=eu ~/.claude/skills/ngrok-fileserver/serve.sh "/path"
-```
-
-#### Windows (cmd / PowerShell):
-```cmd
-"%USERPROFILE%\.claude\skills\ngrok-fileserver\serve.cmd" "C:\path\to\folder"
-
-set PORT=9090
-"%USERPROFILE%\.claude\skills\ngrok-fileserver\serve.cmd" "C:\path"
 ```
 
 ### Step 2 — Read the public URL

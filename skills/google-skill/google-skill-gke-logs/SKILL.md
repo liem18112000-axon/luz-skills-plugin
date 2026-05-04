@@ -1,6 +1,6 @@
 ---
 name: google-skill-gke-logs
-description: Read Google Cloud Logging entries for a Kubernetes container in a GKE cluster. Use when the user asks to "show logs for <X>", "tail logs", "fetch errors from <X>", or wants to inspect log output from a containerized workload running in GKE. Only CONTAINER is required — org defaults (klara-nonprod / dev / europe-west6) auto-fill cluster, namespace, and project. Cross-platform — ships a Windows .cmd and a POSIX .sh runner.
+description: Read Google Cloud Logging entries for a Kubernetes container in a GKE cluster. Use when the user asks to "show logs for <X>", "tail logs", "fetch errors from <X>", or wants to inspect log output from a containerized workload running in GKE. Only CONTAINER is required — org defaults (klara-nonprod / dev / europe-west6) auto-fill cluster, namespace, and project. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # google-skill-gke-logs
@@ -32,30 +32,16 @@ The defaults match the klara setup. To inspect logs of a different container in 
 
 ## How to invoke
 
-### Windows (cmd / PowerShell)
-Path: `%USERPROFILE%\.claude\skills\google-skill-gke-logs\view_logs.cmd`
+### Invocation (bash)
 
-```cmd
-REM Common case
-"%USERPROFILE%\.claude\skills\google-skill-gke-logs\view_logs.cmd" luz-docs
-
-REM Errors only, last 2 hours, more entries
-set SEVERITY=ERROR
-set FRESHNESS=2h
-set LIMIT=5000
-"%USERPROFILE%\.claude\skills\google-skill-gke-logs\view_logs.cmd" luz-docs
-
-REM Specific pod
-set POD=luz-docs-0
-"%USERPROFILE%\.claude\skills\google-skill-gke-logs\view_logs.cmd" luz-docs
-
-REM Substring search
-set SEARCH=NullPointerException
-"%USERPROFILE%\.claude\skills\google-skill-gke-logs\view_logs.cmd" luz-docs
-```
-
-### Linux / macOS (bash / zsh)
 Path: `~/.claude/skills/google-skill-gke-logs/view_logs.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/google-skill-gke-logs/view_logs.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/google-skill-gke-logs/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
 
 ```bash
 # Common case

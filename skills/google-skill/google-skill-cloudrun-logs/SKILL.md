@@ -1,6 +1,6 @@
 ---
 name: google-skill-cloudrun-logs
-description: Read Google Cloud Logging entries for a Cloud Run service. Use when the user asks to "show logs for <service>", "tail Cloud Run logs", "fetch errors from <service>", or wants to inspect log output from a Cloud Run revision (e.g. dev-luz-thumbnail). Only SERVICE is required — org defaults (klara-nonprod / europe-west6) auto-fill project and region. Cross-platform — ships a Windows .cmd and a POSIX .sh runner.
+description: Read Google Cloud Logging entries for a Cloud Run service. Use when the user asks to "show logs for <service>", "tail Cloud Run logs", "fetch errors from <service>", or wants to inspect log output from a Cloud Run revision (e.g. dev-luz-thumbnail). Only SERVICE is required — org defaults (klara-nonprod / europe-west6) auto-fill project and region. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # google-skill-cloudrun-logs
@@ -31,29 +31,16 @@ The defaults match the klara setup (dev-* services live in `klara-nonprod`/`euro
 
 ## How to invoke
 
-### Windows (cmd / PowerShell)
-Path: `%USERPROFILE%\.claude\skills\google-skill-cloudrun-logs\view_cloudrun_logs.cmd`
+### Invocation (bash)
 
-```cmd
-REM Common case
-"%USERPROFILE%\.claude\skills\google-skill-cloudrun-logs\view_cloudrun_logs.cmd" dev-luz-thumbnail
-
-REM Errors only, last 2 hours
-set SEVERITY=ERROR
-set FRESHNESS=2h
-"%USERPROFILE%\.claude\skills\google-skill-cloudrun-logs\view_cloudrun_logs.cmd" dev-luz-thumbnail
-
-REM Specific revision
-set REVISION=dev-luz-thumbnail-00042-abc
-"%USERPROFILE%\.claude\skills\google-skill-cloudrun-logs\view_cloudrun_logs.cmd" dev-luz-thumbnail
-
-REM Substring search
-set SEARCH=OutOfMemory
-"%USERPROFILE%\.claude\skills\google-skill-cloudrun-logs\view_cloudrun_logs.cmd" dev-luz-thumbnail
-```
-
-### Linux / macOS (bash / zsh)
 Path: `~/.claude/skills/google-skill-cloudrun-logs/view_cloudrun_logs.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/google-skill-cloudrun-logs/view_cloudrun_logs.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/google-skill-cloudrun-logs/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
 
 ```bash
 # Common case

@@ -15,6 +15,7 @@
     "./skills/earchive/",
     "./skills/ngrok/",
     "./skills/playwright/",
-    "./skills/code/"
+    "./skills/code/",
+    "./skills/prompt/"
   ]
 }

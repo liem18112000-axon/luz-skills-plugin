@@ -1,6 +1,6 @@
 ---
 name: google-skill-gke-configmap
-description: View and edit a Kubernetes ConfigMap currently in use by a workload in a GKE cluster, then restart the workload to pick up the change. Use when the user asks to "show the config", "what env is luz-docs using", "change DB_HOST in the config", "add this var", "remove that key from the configmap", etc. Defaults to NAMESPACE=dev. View-only is non-destructive; any add/change/remove is followed by a `kubectl rollout restart` of the affected StatefulSet/Deployment so the new values are loaded. Cross-platform — ships a Windows .cmd and a POSIX .sh viewer.
+description: View and edit a Kubernetes ConfigMap currently in use by a workload in a GKE cluster, then restart the workload to pick up the change. Use when the user asks to "show the config", "what env is luz-docs using", "change DB_HOST in the config", "add this var", "remove that key from the configmap", etc. Defaults to NAMESPACE=dev. View-only is non-destructive; any add/change/remove is followed by a `kubectl rollout restart` of the affected StatefulSet/Deployment so the new values are loaded. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # google-skill-gke-configmap
@@ -29,14 +29,21 @@ If multiple ConfigMaps are present, pick the most likely match by name (e.g. `lu
 
 ### Step 2 — View the ConfigMap
 
-Use the viewer script:
+Use the viewer script.
+
+### Invocation (bash)
+
+Path: `~/.claude/skills/google-skill-gke-configmap/view_configmap.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/google-skill-gke-configmap/view_configmap.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/google-skill-gke-configmap/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
 
 ```bash
 ~/.claude/skills/google-skill-gke-configmap/view_configmap.sh luz-docs-env-configmap-h7h69gmbt2
-```
-
-```cmd
-"%USERPROFILE%\.claude\skills\google-skill-gke-configmap\view_configmap.cmd" luz-docs-env-configmap-h7h69gmbt2
 ```
 
 Show the user the relevant portion of `data:` and confirm what they want to change before mutating.

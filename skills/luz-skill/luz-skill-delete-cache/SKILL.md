@@ -1,6 +1,6 @@
 ---
 name: luz-skill-delete-cache
-description: Delete (evict) a Luz cache entry from the luz_cache service for a given tenant + cache key, via the api-forwarder in GKE. Use when the user asks to "evict cache <key>", "delete luz cache <key>", "invalidate CustomerIdAndEmaiMap for tenant <id>", or "drop the cache entry". Same endpoint as luz-skill-get-cache but uses HTTP DELETE. Auto-starts a `kubectl port-forward` to `services/api-forwarder` on the chosen namespace if `localhost:PORT` is not already reachable, auto-increments the local port (8080 → 8081 → …) when the requested port is occupied, and auto-acquires an admin token when one is not supplied. Prints `deleted` on 2xx, or `not found` if the API returns 404. Cross-platform — ships a Windows .cmd and a POSIX .sh runner.
+description: Delete (evict) a Luz cache entry from the luz_cache service for a given tenant + cache key, via the api-forwarder in GKE. Use when the user asks to "evict cache <key>", "delete luz cache <key>", "invalidate CustomerIdAndEmaiMap for tenant <id>", or "drop the cache entry". Same endpoint as luz-skill-get-cache but uses HTTP DELETE. Auto-starts a `kubectl port-forward` to `services/api-forwarder` on the chosen namespace if `localhost:PORT` is not already reachable, auto-increments the local port (8080 → 8081 → …) when the requested port is occupied, and auto-acquires an admin token when one is not supplied. Prints `deleted` on 2xx, or `not found` if the API returns 404. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # luz-skill-delete-cache
@@ -33,26 +33,16 @@ Wraps `DELETE /luz_cache/api/{TENANT_ID}/{CACHE_KEY}`. Same connectivity / token
 
 ## How to invoke
 
-### Windows (cmd / PowerShell)
-Path: `%USERPROFILE%\.claude\skills\luz-skill-delete-cache\delete_cache.cmd`
+### Invocation (bash)
 
-```cmd
-REM Auto-acquire token (needs ADMIN_TENANT_ID)
-set ADMIN_TENANT_ID=00a04daf-f2b3-41d5-8c12-2d1b4c48a36a
-"%USERPROFILE%\.claude\skills\luz-skill-delete-cache\delete_cache.cmd" be01bf45-611a-4011-90a8-76227db1d190 CustomerIdAndEmaiMap
-
-REM Provide token directly
-set TOKEN=eyJhbGciOi...
-"%USERPROFILE%\.claude\skills\luz-skill-delete-cache\delete_cache.cmd" be01bf45-611a-4011-90a8-76227db1d190 CustomerIdAndEmaiMap
-
-REM Different namespace
-set NAMESPACE=stg
-set ADMIN_TENANT_ID=00a04daf-f2b3-41d5-8c12-2d1b4c48a36a
-"%USERPROFILE%\.claude\skills\luz-skill-delete-cache\delete_cache.cmd" be01bf45-611a-4011-90a8-76227db1d190 CustomerIdAndEmaiMap
-```
-
-### Linux / macOS (bash / zsh / Git Bash)
 Path: `~/.claude/skills/luz-skill-delete-cache/delete_cache.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/luz-skill-delete-cache/delete_cache.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/luz-skill-delete-cache/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
 
 ```bash
 # Auto-acquire token

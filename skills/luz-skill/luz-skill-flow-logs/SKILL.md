@@ -1,6 +1,6 @@
 ---
 name: luz-skill-flow-logs
-description: Read interleaved Cloud Logging entries across the 4 Luz services along the request flow (luz-webclient → luz-docs-view-controller → luz-docs → luz-jsonstore). Use when the user wants to "trace a request", "correlate errors across services", or "see the flow logs for tenant <id>". A single multi-container `gcloud logging read` so entries from all four services come back chronologically interleaved. Multi-service counterpart of `google-skill-gke-logs`. Cross-platform — ships a Windows .cmd and a POSIX .sh runner.
+description: Read interleaved Cloud Logging entries across the 4 Luz services along the request flow (luz-webclient → luz-docs-view-controller → luz-docs → luz-jsonstore). Use when the user wants to "trace a request", "correlate errors across services", or "see the flow logs for tenant <id>". A single multi-container `gcloud logging read` so entries from all four services come back chronologically interleaved. Multi-service counterpart of `google-skill-gke-logs`. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # luz-skill-flow-logs
@@ -38,8 +38,16 @@ This is the multi-service counterpart of `google-skill-gke-logs` (which reads on
 
 ## How to invoke
 
-### Linux / macOS / Git Bash (preferred)
+### Invocation (bash)
+
 Path: `~/.claude/skills/luz-skill-flow-logs/trace_flow_logs.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/luz-skill-flow-logs/trace_flow_logs.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/luz-skill-flow-logs/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
 
 ```bash
 # Common case (search by tenant id, last 30m)
@@ -53,15 +61,6 @@ SEVERITY=ERROR FRESHNESS=1h LIMIT=10000 \
 SERVICES=luz-docs,luz-jsonstore \
   ~/.claude/skills/luz-skill-flow-logs/trace_flow_logs.sh a5e06d74-137c-4a9e-9adc-9eccdccc2d17
 ```
-
-### Windows native cmd / PowerShell
-Path: `%USERPROFILE%\.claude\skills\luz-skill-flow-logs\trace_flow_logs.cmd`
-
-```cmd
-"%USERPROFILE%\.claude\skills\luz-skill-flow-logs\trace_flow_logs.cmd" a5e06d74-137c-4a9e-9adc-9eccdccc2d17
-```
-
-> **Note:** when invoking the `.cmd` from Git Bash on Windows, env vars passed via `KEY=value cmd ...` and the `^` line continuations don't always survive. Prefer the `.sh` runner from bash. From cmd.exe / PowerShell the `.cmd` works as documented.
 
 ## What the script does
 

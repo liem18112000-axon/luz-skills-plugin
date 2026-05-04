@@ -1,6 +1,6 @@
 ---
 name: earchive-data-prepare
-description: Prepare synthetic eArchive test data for an existing Luz tenant in dev MongoDB. Truncates `documents` + `folders`, then generates a folder tree (default 30 folders, max-nested 3 levels) and N documents (default 128 000) where each doc references 1–`MAX_FOLDERS_PER_DOC` random folders (default 10). Auto-discovers the replica set primary across `luz-mongodb02-cluster-rs-{0,1,2}` by spinning a kubectl port-forward to each in turn and probing with a one-shot insert+drop on a namespaced probe collection (`_earchive_data_prepare_probe`) — so the probe never touches real data. Bootstrap-installs `node` + the `mongodb` npm package on first run; `kubectl` must already be on PATH. Cross-platform — ships a Windows .cmd wrapper and a POSIX .sh runner. Use when the user asks to "seed test data on dev tenant", "regenerate folder/doc fixtures", "prepare 128k docs for the canary tenant", or any equivalent.
+description: Prepare synthetic eArchive test data for an existing Luz tenant in dev MongoDB. Truncates `documents` + `folders`, then generates a folder tree (default 30 folders, max-nested 3 levels) and N documents (default 128 000) where each doc references 1–`MAX_FOLDERS_PER_DOC` random folders (default 10). Auto-discovers the replica set primary across `luz-mongodb02-cluster-rs-{0,1,2}` by spinning a kubectl port-forward to each in turn and probing with a one-shot insert+drop on a namespaced probe collection (`_earchive_data_prepare_probe`) — so the probe never touches real data. Bootstrap-installs `node` + the `mongodb` npm package on first run; `kubectl` must already be on PATH. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap). Use when the user asks to "seed test data on dev tenant", "regenerate folder/doc fixtures", "prepare 128k docs for the canary tenant", or any equivalent.
 ---
 
 # earchive-data-prepare
@@ -24,7 +24,17 @@ Wipes `folders` + `documents` for a Luz tenant and regenerates fresh synthetic f
 
 ## How to invoke
 
-### Linux / macOS / Git Bash
+### Invocation (bash)
+
+Path: `~/.claude/skills/earchive-data-prepare/prepare.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/earchive-data-prepare/prepare.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/earchive-data-prepare/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
+
 ```bash
 ~/.claude/skills/earchive-data-prepare/prepare.sh                                # dry-run (refused: missing CONFIRM)
 CONFIRM=yes ~/.claude/skills/earchive-data-prepare/prepare.sh                    # default sizes
@@ -32,15 +42,6 @@ CONFIRM=yes DOC_COUNT=50000 FOLDER_COUNT=20 MAX_NESTED=2 \
     ~/.claude/skills/earchive-data-prepare/prepare.sh                            # custom sizes
 CONFIRM=yes TENANT_ID=<uuid> ~/.claude/skills/earchive-data-prepare/prepare.sh   # different tenant
 ```
-
-### Windows native cmd / PowerShell
-```cmd
-"%USERPROFILE%\.claude\skills\earchive-data-prepare\prepare.cmd"
-set CONFIRM=yes
-"%USERPROFILE%\.claude\skills\earchive-data-prepare\prepare.cmd"
-```
-
-Cmd shells to bash if Git Bash is on PATH (Git for Windows ships it). If not, the .cmd surfaces an install hint and exits non-zero.
 
 ## What it does, in order
 
@@ -63,8 +64,9 @@ Cmd shells to bash if Git Bash is on PATH (Git for Windows ships it). If not, th
 ```
 earchive-data-prepare/
 ├── SKILL.md                 (this file)
-├── prepare.sh / prepare.cmd (orchestrator: bootstrap → port-forward loop → generate → cleanup)
-├── bootstrap.sh / bootstrap.cmd (deps check + install where possible)
+├── ensure-bash.ps1          (one-time Windows bash bootstrap — installs Git for Windows via winget if bash is missing)
+├── prepare.sh               (orchestrator: bootstrap → port-forward loop → generate → cleanup)
+├── bootstrap.sh             (deps check + install where possible)
 └── _lib/
     ├── prepare_data.js      (the actual probe + truncate + generate; cross-platform Node)
     └── package.json         (declares `mongodb` dep)

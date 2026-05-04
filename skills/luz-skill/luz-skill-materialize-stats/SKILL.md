@@ -1,6 +1,6 @@
 ---
 name: luz-skill-materialize-stats
-description: Count documents by materialise state (`_hasUnrestrictedFolder` present/absent, restricted-with-codes, restricted-no-codes) for a Luz tenant in dev MongoDB. Use when the user wants to "check how many docs are materialised", "verify the backfill", "see materialise stats for tenant <id>", or "find out why per-folder counts return 0 after the materialise rollout". Port-forwards to `luz-mongodb02-cluster-rs-0:27017` in `dev-mongodb-clusters`, runs a Node + mongodb-driver script, prints a per-state breakdown with percentages plus a sample of restricted-with-codes docs. Cross-platform — ships a Windows .cmd wrapper and a POSIX .sh runner. Mirrors the logic in `luz_docs/data/search-effective-security-class.js` but is parameterised on `TENANT_ID`.
+description: Count documents by materialise state (`_hasUnrestrictedFolder` present/absent, restricted-with-codes, restricted-no-codes) for a Luz tenant in dev MongoDB. Use when the user wants to "check how many docs are materialised", "verify the backfill", "see materialise stats for tenant <id>", or "find out why per-folder counts return 0 after the materialise rollout". Port-forwards to `luz-mongodb02-cluster-rs-0:27017` in `dev-mongodb-clusters`, runs a Node + mongodb-driver script, prints a per-state breakdown with percentages plus a sample of restricted-with-codes docs. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap). Mirrors the logic in `luz_docs/data/search-effective-security-class.js` but is parameterised on `TENANT_ID`.
 ---
 
 # luz-skill-materialize-stats
@@ -39,8 +39,16 @@ If `notMaterialised` is non-zero while `MaterializeFacade.shouldUseMaterialized(
 
 ## How to invoke
 
-### Linux / macOS / Git Bash
+### Invocation (bash)
+
 Path: `~/.claude/skills/luz-skill-materialize-stats/check_materialize.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/luz-skill-materialize-stats/check_materialize.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/luz-skill-materialize-stats/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
 
 ```bash
 # Common case
@@ -53,9 +61,6 @@ LUZ_DOCS_REPO=/work/luz_docs \
 # Keep the port-forward running for follow-up queries
 KEEP_PORT_FORWARD=1 ~/.claude/skills/luz-skill-materialize-stats/check_materialize.sh <TENANT_ID>
 ```
-
-### Windows native cmd / PowerShell
-Path: `%USERPROFILE%\.claude\skills\luz-skill-materialize-stats\check_materialize.cmd` — shells out to bash.
 
 ## What the script does
 

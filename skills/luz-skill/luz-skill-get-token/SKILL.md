@@ -1,6 +1,6 @@
 ---
 name: luz-skill-get-token
-description: Acquire an all-tenant access token from the Luz Security service via the api-forwarder in GKE. Use when the user asks to "get a luz token", "fetch an admin token", or any task that needs a Luz bearer token. Auto-starts a `kubectl port-forward` to `services/api-forwarder` on the chosen namespace if `localhost:PORT` is not already reachable, and auto-increments the local port (8080 → 8081 → …) when the requested port is occupied by another process. Cross-platform — ships a Windows .cmd and a POSIX .sh runner.
+description: Acquire an all-tenant access token from the Luz Security service via the api-forwarder in GKE. Use when the user asks to "get a luz token", "fetch an admin token", or any task that needs a Luz bearer token. Auto-starts a `kubectl port-forward` to `services/api-forwarder` on the chosen namespace if `localhost:PORT` is not already reachable, and auto-increments the local port (8080 → 8081 → …) when the requested port is occupied by another process. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # luz-skill-get-token
@@ -30,19 +30,16 @@ The token value (the `token` field of the JSON response) is printed on stdout �
 
 ## How to invoke
 
-### Windows (cmd / PowerShell)
-Path: `%USERPROFILE%\.claude\skills\luz-skill-get-token\get_token.cmd`
+### Invocation (bash)
 
-```cmd
-"%USERPROFILE%\.claude\skills\luz-skill-get-token\get_token.cmd" 00a04daf-f2b3-41d5-8c12-2d1b4c48a36a
-
-REM Different namespace
-set NAMESPACE=stg
-"%USERPROFILE%\.claude\skills\luz-skill-get-token\get_token.cmd" 00a04daf-f2b3-41d5-8c12-2d1b4c48a36a
-```
-
-### Linux / macOS (bash / zsh / Git Bash)
 Path: `~/.claude/skills/luz-skill-get-token/get_token.sh`
+
+Linux / macOS: run directly. Windows: run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/luz-skill-get-token/get_token.sh ARGS`.
+
+First-time Windows setup (only if `bash` is not on PATH yet):
+`powershell -ExecutionPolicy Bypass -File ~/.claude/skills/luz-skill-get-token/ensure-bash.ps1`
+
+Then the bash examples below work from any shell.
 
 ```bash
 ~/.claude/skills/luz-skill-get-token/get_token.sh 00a04daf-f2b3-41d5-8c12-2d1b4c48a36a

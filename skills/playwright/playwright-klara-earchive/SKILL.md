@@ -1,6 +1,6 @@
 ---
 name: playwright-klara-earchive
-description: Use Playwright MCP to log in to https://dev.klara.tech and exercise the eArchive page — capture "Custom (N)" / "Documents (N)" counts, list each "<folder> — N Files" pair, count the document items actually rendered under Documents, reload once, and report wall-clock load durations for both visits. Auto-handles the login pop-up and the "Session Terminate" → "Continue my session" recovery. Combine with luz-skill-flow-logs / google-skill-gke-logs to diagnose backend failures. Use when the user asks to "test eArchive on dev", "run the klara playwright check", "exercise the eArchive page", "smoke test dev.klara.tech", or any equivalent.
+description: Use Playwright MCP to log in to https://dev.klara.tech and exercise the eArchive page — capture "Custom (N)" / "Documents (N)" counts, list each "<folder> — N Files" pair, count the document items actually rendered under Documents, reload once, and report wall-clock load durations for both visits. Auto-handles the login pop-up and the "Session Terminate" → "Continue my session" recovery. Combine with luz-skill-flow-logs / google-skill-gke-logs to diagnose backend failures. Use when the user asks to "test eArchive on dev", "run the klara playwright check", "exercise the eArchive page", "smoke test dev.klara.tech", or any equivalent. Bash-only; Windows users run via Git Bash or `bash` from PowerShell (one-time `ensure-bash.ps1` bootstrap).
 ---
 
 # playwright-klara-earchive
@@ -15,6 +15,7 @@ The skill captures, in this order:
 4. For each folder in the folder widget: `<folder name> — <N> Files`.
 5. The actual count of document items rendered under the **Documents** section.
 6. Wall-clock load time for the **second** visit (after an explicit reload, fired ≤15 s after Step 4 completes).
+7. For the first `FOLDER_DRILL_COUNT` folders (default 5): click into each, time the click→render, capture the in-folder Documents badge and rendered-item count.
 
 Auto-handled interruptions:
 
@@ -29,6 +30,7 @@ Auto-handled interruptions:
 | `EMAIL`       | optional      | `liem18112000@gmail.com` |
 | `PASSWORD`    | **required**  | (no default — pass via env var or args at invocation; never commit to disk) |
 | `RELOADS`     | optional      | `1` |
+| `FOLDER_DRILL_COUNT` | optional | `5` — number of folders to click into and time after the reload step. `0` to skip. |
 | `SCREENSHOTS` | optional      | `yes` (per-step PNGs into a temp folder; absolute path printed at end). Set to `no` to skip. |
 
 Mask the password when echoing the resolved tuple.
@@ -55,13 +57,14 @@ Then `/exit` and relaunch Claude Code (MCP servers boot once at startup; can't b
 ```
 playwright-klara-earchive/
 ├── SKILL.md                    (this file — assistant playbook)
-├── bootstrap.cmd / bootstrap.sh   (Step 0 — verify deps, install where possible)
-├── step_init_screenshot_dir.cmd/.sh (Step 0b — mint <os-tmp>/playwright-klara-earchive-<epoch>/, print absolute path)
-├── step_mark_time.cmd/.sh         (emit Date.now() — t0/t1/t2/t3 marks)
-├── step_kick_logs.cmd/.sh         (kick luz-skill-flow-logs in BACKGROUND, print log path)
-├── step_extract_tenant.cmd/.sh    (first UUID from a DOM dump, stdin or file)
-├── step_parse_snapshot.cmd/.sh    (extract counts + folders + doc-item count from snapshot YAML)
-├── step_summarize_logs.cmd/.sh    (count anomaly patterns in the background log file)
+├── ensure-bash.ps1               (one-time Windows bash bootstrap — installs Git for Windows via winget if bash is missing)
+├── bootstrap.sh                  (Step 0 — verify deps, install where possible)
+├── step_init_screenshot_dir.sh   (Step 0b — mint <cwd>/.playwright-mcp/screenshots-<epoch>/, print absolute path)
+├── step_mark_time.sh             (emit Date.now() — t0/t1/t2/t3 marks)
+├── step_kick_logs.sh             (kick luz-skill-flow-logs in BACKGROUND, print log path)
+├── step_extract_tenant.sh        (first UUID from a DOM dump, stdin or file)
+├── step_parse_snapshot.sh        (extract counts + folders + doc-item count from snapshot YAML)
+├── step_summarize_logs.sh        (count anomaly patterns in the background log file)
 └── _lib/
     ├── parse_snapshot.js
     ├── extract_tenant.js
@@ -89,7 +92,7 @@ time →
 
 ## Assistant playbook
 
-Path conventions below: `~/.claude/skills/playwright-klara-earchive/` on POSIX, `%USERPROFILE%\.claude\skills\playwright-klara-earchive\` on Windows. The assistant should pick the matching extension for the host shell (sh from Bash, cmd from PowerShell).
+Path: `~/.claude/skills/playwright-klara-earchive/` (use this on every platform — bash-only). On Windows, run via Git Bash, or invoke from PowerShell as `bash ~/.claude/skills/playwright-klara-earchive/<script>.sh ARGS`. First-time Windows setup if `bash` is not on PATH yet: `powershell -ExecutionPolicy Bypass -File ~/.claude/skills/playwright-klara-earchive/ensure-bash.ps1`.
 
 ### Step 0 — Bootstrap deps + (if SCREENSHOTS=yes) mint per-run screenshot dir
 
@@ -103,8 +106,10 @@ If exit 1, surface the printed instructions and stop. The script tries `winget` 
 
 ```
 Bash { command: "~/.claude/skills/playwright-klara-earchive/step_init_screenshot_dir.sh" }
-  → prints absolute path to <os-tmp>/playwright-klara-earchive-<epoch-ms>/
+  → prints absolute path to <cwd>/.playwright-mcp/screenshots-<epoch-ms>/
 ```
+
+The dir lives **inside `.playwright-mcp/`** because the Playwright MCP server only allows writes under the project dir and that subfolder. Writing to `os.tmpdir()` fails with `File access denied: <path> is outside allowed roots`.
 
 Capture that path into a local var (call it `SHOT_DIR`). For every later step that warrants visual evidence, call:
 
@@ -206,6 +211,45 @@ load2_ms = t3 - t2
 
 For `RELOADS > 1`, repeat (still ≤15 s gap between iterations) and report each.
 
+### Step 5b — Drill into the first `FOLDER_DRILL_COUNT` folders
+
+Goal: confirm each folder actually opens, time the click→render, and capture the rendered doc count vs the badge in the folder row. Verifies the per-folder query path on top of the page-level load already measured.
+
+`folderRows` from Step 4's parse output already carries `{ name, files, ref }`. Skip rows whose `ref` is `null` (synthesised entries) and skip the literal company-root row (`Best Company GmbH` / first row with `files === "0"`). Take the first `FOLDER_DRILL_COUNT` of the remaining rows.
+
+For each picked folder:
+
+```
+Bash { command: "~/.claude/skills/playwright-klara-earchive/step_mark_time.sh" }   → t_a
+
+mcp__playwright__browser_click {
+  element: "folder row: <folder.name>",
+  target: "<folder.ref>"
+}
+mcp__playwright__browser_wait_for { text: "<folder.name>" }   # folder name appears in breadcrumb / page title
+mcp__playwright__browser_wait_for { textGone: "Loading" }     # belt-and-braces; ignored if "Loading" never showed
+
+Bash { command: "~/.claude/skills/playwright-klara-earchive/step_mark_time.sh" }   → t_b
+folder_load_ms = t_b - t_a
+
+mcp__playwright__browser_snapshot { filename: "earchive-folder-<idx>.yml" }
+Bash { command: "~/.claude/skills/playwright-klara-earchive/step_parse_snapshot.sh ./earchive-folder-<idx>.yml" }
+  → JSON: { documentsCount, documentItemCount, ... }   # documentsCount is the filtered-to-folder badge
+```
+
+Record `{ name, badgeFiles (from Step 4), inFolderDocumentsCount, inFolderRenderedItems, loadMs }` per folder.
+
+After each drill, return to the eArchive root before the next click. Two options:
+
+```
+mcp__playwright__browser_navigate { url: <eArchive-url> }
+mcp__playwright__browser_wait_for { text: "Manage access rights" }
+```
+
+(Slow but reliable. A breadcrumb / "back to eArchive" link is preferable when the snapshot exposes one — surface it as `<ref>` and click instead of navigating.)
+
+If `FOLDER_DRILL_COUNT === 0`, skip this step entirely.
+
 ### Step 6 — Session-Terminate recovery
 
 If a snapshot at any point shows "Session Terminate" / "Session expired":
@@ -243,6 +287,12 @@ Folder widget
   <folder-1>: <N> Files
   <folder-2>: <N> Files
   ...
+
+Folder drill (first <FOLDER_DRILL_COUNT>)
+  <folder-1>: load=<ms>ms badge=<N> filtered-Documents=<N> rendered=<N>
+  <folder-2>: load=<ms>ms badge=<N> filtered-Documents=<N> rendered=<N>
+  ...
+  (skipped if FOLDER_DRILL_COUNT=0)
 
 Anomalies (from logs + flow)
   - MongoSocketReadException × <N> on luz-jsonstore aggregate

@@ -1,3 +1,10 @@
 *.zip
 .DS_Store
 Thumbs.db
+
+# Per-skill heavy artifacts (downloaded by skill installers, not source)
+skills/prompt/prompt-compress/models/
+**/node_modules/
+**/__pycache__/
+**/.venv/
+**/*.pyc
