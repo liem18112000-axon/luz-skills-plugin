@@ -99,14 +99,14 @@ for idx in 0 1 2; do
         stop_pf
         continue
     else
-        echo "[prepare] probe error against $pod (rc=$rc)" >&2
+        echo "[prepare] probe error against $pod (rc=$rc) — trying next replica" >&2
         stop_pf
-        exit 1
+        continue
     fi
 done
 
 if [ -z "$PRIMARY" ]; then
-    echo "[prepare] no primary found across ${STS_NAME}-{0,1,2}" >&2
+    echo "[prepare] no primary found across ${STS_NAME}-{0,1,2} (all replicas failed probe — check creds + cluster)" >&2
     exit 1
 fi
 
