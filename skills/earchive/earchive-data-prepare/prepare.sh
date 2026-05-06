@@ -33,6 +33,9 @@ MAX_FOLDERS_PER_DOC="${MAX_FOLDERS_PER_DOC:-10}"
 BATCH_SIZE="${BATCH_SIZE:-1000}"
 MATERIALIZE="${MATERIALIZE:-true}"
 RESTRICTED_FOLDER_PCT="${RESTRICTED_FOLDER_PCT:-75}"
+MONGO_USER="${MONGO_USER:-}"
+MONGO_PASS="${MONGO_PASS:-}"
+MONGO_AUTH_SOURCE="${MONGO_AUTH_SOURCE:-}"
 CONFIRM="${CONFIRM:-}"
 
 echo "[prepare] tenant            = $TENANT_ID"
@@ -43,11 +46,14 @@ echo "[prepare] max folders/doc   = $MAX_FOLDERS_PER_DOC"
 echo "[prepare] batch size        = $BATCH_SIZE"
 echo "[prepare] materialize       = $MATERIALIZE"
 echo "[prepare] restricted pct    = $RESTRICTED_FOLDER_PCT"
+echo "[prepare] mongo user        = ${MONGO_USER:-(default = TENANT_ID)}"
+echo "[prepare] mongo pass        = ${MONGO_PASS:+***set***}${MONGO_PASS:-(default = TENANT_ID)}"
+echo "[prepare] mongo authSource  = ${MONGO_AUTH_SOURCE:-(default = TENANT_ID)}"
 echo "[prepare] namespace         = $NAMESPACE"
 echo "[prepare] sts base          = $STS_NAME"
 echo "[prepare] confirm truncate  = ${CONFIRM:-(unset — will refuse)}"
 
-export TENANT_ID DOC_COUNT FOLDER_COUNT MAX_NESTED MAX_FOLDERS_PER_DOC BATCH_SIZE MATERIALIZE RESTRICTED_FOLDER_PCT PORT CONFIRM
+export TENANT_ID DOC_COUNT FOLDER_COUNT MAX_NESTED MAX_FOLDERS_PER_DOC BATCH_SIZE MATERIALIZE RESTRICTED_FOLDER_PCT MONGO_USER MONGO_PASS MONGO_AUTH_SOURCE PORT CONFIRM
 
 start_pf() {
     local pod="$1"

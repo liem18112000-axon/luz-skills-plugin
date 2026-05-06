@@ -16,6 +16,9 @@ const maxFoldersPerDoc   = Math.max(1, parseInt(process.env.MAX_FOLDERS_PER_DOC 
 const batchSize          = Math.max(100, parseInt(process.env.BATCH_SIZE || '1000', 10));
 const port               = process.env.PORT || '27017';
 const mode               = process.env.MODE || 'generate';
+const mongoUser          = process.env.MONGO_USER || tenantId;
+const mongoPass          = process.env.MONGO_PASS || tenantId;
+const authSource         = process.env.MONGO_AUTH_SOURCE || tenantId;
 const materializeFlag    = (process.env.MATERIALIZE || 'true').toLowerCase();
 const materializeEnabled = materializeFlag !== '0' && materializeFlag !== 'false' && materializeFlag !== 'no';
 const restrictedPct      = Math.min(100, Math.max(0, parseInt(process.env.RESTRICTED_FOLDER_PCT || '75', 10)));
@@ -34,8 +37,8 @@ const FOLDER_NAME             = 'name';
 const FOLDER_OWN_CODES        = 'securityClassCodes';
 const FOLDER_INHERITED_CODES  = 'inheritedSecurityClassCodes';
 
-const uri = `mongodb://${tenantId}:${tenantId}@localhost:${port}/${tenantId}`
-    + `?authSource=${tenantId}&readPreference=primary&ssl=false&directConnection=true`;
+const uri = `mongodb://${encodeURIComponent(mongoUser)}:${encodeURIComponent(mongoPass)}@localhost:${port}/${tenantId}`
+    + `?authSource=${authSource}&readPreference=primary&ssl=false&directConnection=true`;
 
 const randInt    = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];

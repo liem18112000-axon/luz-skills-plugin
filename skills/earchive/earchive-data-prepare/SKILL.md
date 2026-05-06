@@ -19,6 +19,9 @@ Wipes `folders` + `documents` for a Luz tenant and regenerates fresh synthetic f
 | `BATCH_SIZE`           | optional      | `1000` (insertMany batch size for documents; also bulkWrite batch for materialize step) |
 | `MATERIALIZE`          | optional      | `true` (after generate, stamp `_effectiveSecurityClassCodes`, `_hasPublicFolder`, `_folderNames` on every fresh doc — mirrors `MaterializeStateComputer.compute`). Set `0` / `false` / `no` to skip. |
 | `RESTRICTED_FOLDER_PCT`| optional      | `75` (probability, 0–100, that a generated folder gets non-empty `securityClassCodes` from the built-in code pool — `CONFIDENTIAL`, `INTERNAL`, `SECRET`, `HR`, `FINANCE`, `LEGAL`, `EXEC`. Each restricted folder gets 1–3 random codes; `inheritedSecurityClassCodes` propagates parent's union. `0` = all folders open, `100` = every folder restricted.) |
+| `MONGO_USER`           | optional      | defaults to `TENANT_ID`. Override when the per-tenant DB user does not match the tenant id (e.g. tenants on the `luz-mongodb00` cluster). |
+| `MONGO_PASS`           | optional      | defaults to `TENANT_ID`. Override alongside `MONGO_USER` when the password is not equal to the tenant id. |
+| `MONGO_AUTH_SOURCE`    | optional      | defaults to `TENANT_ID`. Auth DB the user lives in — usually the tenant DB itself, but override when SCRAM creds live in `admin`. |
 | `NAMESPACE`            | optional      | `dev-mongodb-clusters` |
 | `STS_NAME`             | optional      | `luz-mongodb02-cluster-rs` (replica StatefulSet base name; `-0/-1/-2` suffixes appended) |
 | `PORT`                 | optional      | `27017` |
