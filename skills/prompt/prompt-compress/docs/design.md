@@ -1,209 +1,156 @@
 # Design — `prompt-compress`
 
-A Claude Code skill that compresses English prompts and instruction files into Wenyan (文言文, Classical Chinese) using two local HuggingFace translation models. No API keys, no network after first install.
+A Claude Code skill that compresses English text for LLM token savings using:
 
-## Why Wenyan
+- **Input mode**: Claude itself, applying the wilpel/caveman-compression 9-rule SPEC at a chosen intensity, post-validated by a Python script that checks every protected span (code, URLs, paths, numbers) survived the rewrite.
+- **Output mode**: Default is spaCy POS-aware token drops + a verified-jargon dict (only entries that strictly save tokens under o200k_base) + the same regex phrasal stripping. Fallback `--engine regex` for the pure-regex path (1ms vs 2-3s startup, ~half the savings).
 
-Wenyan is denser per-character than English is per-token. Claude tokenizes CJK characters at roughly 1–2 tokens each; English averages ~1.3 tokens per word. A 300-word English prompt that compresses to ~80 Wenyan characters lands at roughly **70–80 % token reduction** for content the model only needs to *read*.
+No MT models. No torch/transformers. Deps: `tiktoken` + `spacy` + `en_core_web_sm` (~30 MB total).
 
-## Where it fails
+## Why no Chinese, no MT
 
-- Code, file paths, URLs, and numbers must survive translation untouched. They will not, unless we protect them with sentinels before the MT pipeline runs and restore them after.
-- Two-stage MT (EN → modern ZH → Wenyan) is lossy. The skill must validate by round-trip before overwriting the source.
-- Wenyan output is opaque to humans. This is for files only an LLM ever reads — never for user-facing prose, code files, or anything where word-for-word audit matters.
+Earlier versions tried EN→ZH translation (input) and ZH→EN reverse-translation (output) via `Helsinki-NLP/opus-mt-en-zh` + `opus-mt-zh-en`. Both broke:
 
-## Pipeline
+- **Input EN→ZH**: chars −58 % but tokens **+63 %** under `o200k_base`. opus-mt-en-zh emits verbose Chinese with redundant connectives — Han density advantage was wiped out.
+- **Output ZH→EN**: hallucinated proper nouns (`Slack` → `Shrek`), mangled URLs (`https://wiki.example.com/runbooks/hotfix` split into `https://wiki.com/` + `example.` + `https://staging.com/runbooks/hotfix`), emitted filler like `"I'm sorry, py."` and `"I'm not what I'm talking about."`. Placeholders technically survived but surrounding prose was destroyed.
+
+Both paths were removed. The skill is now pure English, pure Python regex + Claude.
+
+## Two modes
+
+### Input mode — Claude-driven 9-rule rewrite + script validation
+
+For compressing prompt files, system instructions, RAG chunks, or any English instructional text *before* it reaches the model.
 
 ```
-English source
+Original English file
     │
     ▼
-[1] Caveman-compress in English        ← Claude does this, following the 9-rule
-    │                                    SPEC inlined in SKILL.md
-    ▼
-[2] Protect: extract placeholders      ← Python (scripts/protect.py)
-    code blocks, inline `code`, URLs, paths, numbers,
-    explicit <!-- preserve --> blocks
-    → replace with " XPHX####XPHX " sentinels
+[1] Claude rewrites prose per the 9-rule SPEC at chosen intensity.
+    Code blocks, inline `code`, URLs, paths, numbers, <!-- preserve --> blocks
+    are copied verbatim — Claude is instructed to leave them alone.
+    Output: <file>.tmp.caveman.md
     │
     ▼
-[3] EN → modern ZH                     ← Helsinki-NLP/opus-mt-en-zh (~300 MB)
+[2] Script validates: scripts/compress.py
+    - Extract protected spans from original via scripts/protect.py:split_segments.
+    - Extract protected spans from rewrite (same function).
+    - For each span in original, check it appears (verbatim, same count) in rewrite.
+    - If any span is missing → exit 2 and dump which spans were dropped.
+    - Compute tokens_in / tokens_out via o200k_base.
     │
     ▼
-[4] ZH → Wenyan                        ← raynardj/wenyanwen-chinese-translate-to-ancient
-    │                                    (~500 MB)
-    ▼
-[5] Restore placeholders               ← fail loudly if any sentinel went missing
+[3] Claude reads the validated rewrite, spot-checks prose facts
+    (named entities, dates expressed as words, technical terms not caught
+    by the regex protection in step 2).
     │
     ▼
-[6] Validate by round-trip             ← Claude reads the Wenyan, decompresses
-    │                                    mentally, diffs facts against the original.
-    │                                    Abort if any fact lost or hallucinated.
-    ▼
-Backup source → <file>.original.md
-Write          <file>.wenyan.md
+[4] Backup → <file>.original.md
+    Write   <file>.compressed.md
 ```
 
-Steps 1, 6 are done by Claude itself (driven by SKILL.md). Steps 2–5 are the Python script `scripts/compress.py` invoked through a thin bash wrapper that picks the right venv python.
+The fact-preservation guarantee comes from two layers:
 
-## Sentinel design
+- **Structural** (step 2): code, URLs, paths, numbers are extracted by regex from BOTH files and compared. Anything regex-protectable is verified by the script.
+- **Semantic** (step 3): Claude reads the rewrite and confirms named entities, technical terms, and word-form dates appear correctly.
 
-The protect step replaces every "untouchable" span with a marker of the form `XPHX0000XPHX`, padded with single spaces. Properties chosen for survival through Chinese MT:
+This is stronger than the wilpel reference implementation, which only diffs *facts* (numbers + named entities) without checking code/URL byte-equivalence. We diff both.
 
-- **All-Latin alphanumeric** — Marian and BERT-based Chinese encoders pass these through largely intact (they get tokenized as unknown subwords, but emerge unchanged).
-- **Fixed length, fixed prefix/suffix** — easy to grep back out with one regex.
-- **Padded with spaces** — prevents the tokenizer from merging the sentinel with a neighboring CJK character. The padding survives restoration but is harmless (an LLM reading the file ignores it).
+### Output mode — three paths
 
-If any sentinel index goes missing between protect and restore, the script exits **2** rather than silently producing partial output. This is the single most important safety property.
+1. **Fast (default, `--engine spacy`)**: spaCy POS pass + verified-jargon dict + regex phrasal stripping. ~7-23% saved on real text. No Claude rewrite cost.
+2. **Fast regex (`--engine regex`)**: pure regex. ~4-18% saved. ~1ms vs spaCy's 2-3s startup. Use when you have lots of small files or want zero spaCy cost.
+3. **Deep (`--deep`)**: Claude rewrites the response per the 9-rule SPEC, then `compress.sh` validates protected spans. ~46-60% saved on AI-style output (filler-heavy), ~17% on documentation-style tech prose (already terse). Same machinery as input mode — just pointed at AI output instead of prompts. Costs Claude tokens for the rewrite step but produces wilpel-LLM-tier compression.
+
+#### Fast path — POS-aware caveman simplification (spaCy default)
+
+For compressing a saved AI response *after* the fact, before pasting it forward.
+
+```
+AI response (English)
+    │
+    ▼
+[1] protect.py:protect() replaces code/URLs/paths/numbers with XPHX{LABEL}XPHX sentinels.
+    │
+    ▼
+[2] Engine pass — default: cavemanize_nlp.py (spaCy)
+    a. Phrasal regex strips hedges, pleasantries, connectives, AI-filler.
+    b. Verified-jargon dict (synchronization → sync, infrastructure → infra, …).
+       Each entry checked at module-load against o200k_base, kept only if it
+       strictly saves tokens. 18 of 29 candidates rejected at verification.
+    c. spaCy POS pass:
+       - DET tokens with article lemmas (a/an/the) → drop
+       - dep_ in {aux, auxpass} → drop ("is running", "was created")
+       - ADV with intensifier lemmas (very, extremely, …) → drop
+       - Whitespace heal so contractions don't merge with neighbors
+    d. Whitespace cleanup, sentence-start re-capitalization.
+
+    Fallback (--engine regex): cavemanize.py
+    Same phrasal regex + blunt token-level regex (drops every "the", every
+    intensifier). ~1ms vs spaCy's 2-3s startup, ~half the savings on tech prose.
+    │
+    ▼
+[3] protect.py:restore() puts the protected spans back.
+    │
+    ▼
+Write <file>.compressed.md (or <file> if --in-place)
+```
+
+spaCy first-call: ~2-3s (model load, then cached for the process). Subsequent calls: ~30ms.
+
+#### Deep path — Claude-driven rewrite (`--deep`)
+
+Identical to input mode's pipeline (Step 1.2 → 1.3 → 1.4 in SKILL.md), with output-mode commit semantics (default non-destructive write to `<file>.compressed.md`). Validator (`compress.sh`) is shared between both flows.
+
+Fact preservation comes from the same two layers as input mode:
+- **Structural**: protected spans (code, URLs, paths, numbers) extracted by regex from BOTH original and rewrite, verbatim+multiplicity diff.
+- **Semantic**: Claude reads the rewrite, spot-checks named entities, technical terms, dates expressed as words.
+
+Output-mode validation tolerance is *lighter* than input mode — losing tone or rephrasing fluff is fine, losing facts is not. Anti-pattern: a rewrite that changes a name, a number, or implies something the original didn't.
+
+## Intensity ladder (input mode only)
+
+Borrowed from JuliusBrussee/caveman, applied to the 9-rule SPEC.
+
+| Level | Behaviour | Tech prose | Chat-style |
+|---|---|---|---|
+| `lite` | Drop intensifiers, hedges, pleasantries, AI-filler. Keep articles + full sentences. | ~5-10% | ~15-25% |
+| `full` (default) | Drop articles too. Allow fragments. Apply all 9 rules. | ~15-25% | ~30-50% |
+| `ultra` | Drop conjunctions. Abbreviate jargon. Aggressive sentence merging. | ~25-40% | ~50-70% |
+
+`ultra` brushes against wilpel's "telegraphic ambiguity" anti-pattern — use it only when you trust the consumer model to disambiguate from context.
+
+## Where the skill fails
+
+- **Output is denser to read.** Caveman EN is still English but reads telegraphically. For files only an LLM ever reads — never for user-facing prose, code files, or anything where word-for-word audit matters.
+- **Output mode on technical prose**: only ~3-8 % saved. Cavemanize removes filler, technical prose has little filler. Use input mode for higher compression on technical content.
+- **Output mode on chat-style AI text**: ~15-25 %. Filler-heavy.
+
+## Sentinels (output mode only)
+
+Output mode uses `protect()` / `restore()` with ` XPHX{LABEL}XPHX ` markers (LABEL = 4 distinct uppercase letters, base 26·25·24·23 = 358,800 indices). Sentinels only need to survive a single Python regex pass — no MT model — so they are completely robust here.
+
+Input mode does NOT use sentinels — the validator in step 2 compares protected-span sets directly, no marker round-trip needed.
 
 ## File layout (as built)
 
 ```
 ~/.claude/skills/prompt-compress/
-├── SKILL.md                # Claude-facing skill spec, 9 rules inlined
-├── requirements.txt        # transformers, torch, sentencepiece, huggingface_hub, tiktoken
-├── install.sh              # bash installer: venv + pip + snapshot_download
+├── SKILL.md                # Claude-facing skill spec
+├── requirements.txt        # tiktoken (only)
+├── install.sh              # venv + pip install (no model download)
 ├── docs/
 │   └── design.md           # this file
-├── scripts/
-│   ├── compress.sh         # cross-platform venv-python launcher
-│   ├── compress.py         # main: protect → en→zh → zh→wenyan → restore → JSON report
-│   ├── protect.py          # placeholder extract / restore
-│   └── translate.py        # lazy-loaded MarianMT + EncoderDecoder pipelines
-└── models/                 # populated on first run by install.sh
-    ├── opus-mt-en-zh/
-    └── wenyanwen-chinese-translate-to-ancient/
+└── scripts/
+    ├── compress.sh         # input-mode launcher (Claude calls after rewrite step)
+    ├── compress.py         # input-mode validator (protected-span diff + token report)
+    ├── compress_output.sh  # output-mode launcher
+    ├── compress_output.py  # output-mode pipeline (protect → cavemanize → restore)
+    ├── cavemanize.py       # rule-based EN simplifier
+    └── protect.py          # placeholder extract/restore + split_segments helper
 ```
 
-Validation (step 6) lives in SKILL.md, not as a separate script — it's driven by the host model, which already has the file contents in context.
-
-## SKILL.md design
-
-```yaml
----
-name: prompt-compress
-description: Compress an English prompt or instruction file into Wenyan ...
----
-```
-
-The body of SKILL.md walks Claude through the six steps above. Three properties of the design matter:
-
-1. **The 9 caveman compression rules are inlined** so Claude does not need to fetch them at runtime. Tokens spent now beat round-trip latency later.
-2. **Boundaries listed twice** — once as a refusal list (file extensions, security keywords) and once as escape hatches (`<!-- preserve -->...<!-- /preserve -->`).
-3. **First-run guidance** — if the script reports missing models, the skill instructs Claude to tell the user to run `install.sh` rather than running it autonomously, because it's a network-heavy one-time operation.
-
-## Script outlines (design intent)
-
-The actual scripts implement these contracts; the snippets below are the design before the code, kept for reference.
-
-### `scripts/compress.py`
-
-```python
-import argparse, json, sys
-from protect import protect, restore
-from translate import en_to_zh, zh_to_wenyan
-
-def main():
-    args = parse_args()                    # --in, --out
-    src  = open(args.in_).read()
-
-    protected, placeholders = protect(src)
-    zh = "\n".join(en_to_zh(s)     for s in split_sentences(protected))
-    wy = "\n".join(zh_to_wenyan(s) for s in split_sentences(zh))
-    final, missing = restore(wy, placeholders)
-
-    report = {
-        "tokens_in":  count_tokens(src),
-        "tokens_out": count_tokens(final),
-        "pct_saved":  pct(src, final),
-        "placeholders_protected": len(placeholders),
-        "placeholders_lost":      len(missing),
-    }
-    if missing:
-        sys.stderr.write(f"FAIL: {len(missing)} placeholders lost: {missing}\n")
-        return 2
-
-    open(args.out, "w", encoding="utf-8").write(final)
-    print(json.dumps(report))
-    return 0
-```
-
-### `scripts/protect.py`
-
-```python
-import re
-
-PATTERNS = [
-    r"<!--\s*preserve\s*-->[\s\S]*?<!--\s*/preserve\s*-->",  # explicit preserves
-    r"```[\s\S]*?```",                       # fenced code
-    r"`[^`\n]+`",                            # inline code
-    r"https?://\S+",                         # URLs
-    r"(?:[A-Za-z]:)?[/\\][\w./\\-]+",        # file paths
-    r"\b\d+(?:\.\d+)?(?:[a-zA-Z%]+)?\b",     # numbers + units
-]
-COMBINED = re.compile("|".join(f"(?:{p})" for p in PATTERNS))
-
-def protect(text):
-    out = []
-    def sub(m):
-        out.append(m.group(0))
-        return f" XPHX{len(out)-1:04d}XPHX "
-    return COMBINED.sub(sub, text), out
-
-def restore(text, placeholders):
-    seen = set()
-    def unsub(m):
-        i = int(m.group(1))
-        seen.add(i)
-        return placeholders[i] if i < len(placeholders) else m.group(0)
-    text = re.sub(r"XPHX(\d{4})XPHX", unsub, text)
-    missing = [i for i in range(len(placeholders)) if i not in seen]
-    return text, missing
-```
-
-### `scripts/translate.py`
-
-```python
-from functools import lru_cache
-from pathlib import Path
-import torch
-
-MODELS_DIR = Path(__file__).resolve().parent.parent / "models"
-
-@lru_cache(maxsize=1)
-def _en_zh():
-    from transformers import MarianMTModel, MarianTokenizer
-    p = MODELS_DIR / "opus-mt-en-zh"
-    return MarianTokenizer.from_pretrained(p), MarianMTModel.from_pretrained(p).eval()
-
-@lru_cache(maxsize=1)
-def _zh_wy():
-    from transformers import AutoTokenizer, EncoderDecoderModel
-    p = MODELS_DIR / "wenyanwen-chinese-translate-to-ancient"
-    return AutoTokenizer.from_pretrained(p), EncoderDecoderModel.from_pretrained(p).eval()
-
-@torch.no_grad()
-def en_to_zh(text):
-    tok, model = _en_zh()
-    enc = tok(text, return_tensors="pt", truncation=True, max_length=512)
-    return tok.batch_decode(model.generate(**enc, max_length=512, num_beams=4),
-                             skip_special_tokens=True)[0]
-
-@torch.no_grad()
-def zh_to_wenyan(text):
-    tok, model = _zh_wy()
-    enc = tok(text, return_tensors="pt", truncation=True,
-              max_length=128, padding="max_length")
-    out = model.generate(enc.input_ids,
-                         attention_mask=enc.attention_mask,
-                         num_beams=3, max_length=256,
-                         bos_token_id=101,
-                         eos_token_id=tok.sep_token_id,
-                         pad_token_id=tok.pad_token_id)
-    return tok.batch_decode(out, skip_special_tokens=True)[0]
-```
-
-`lru_cache` keeps both models warm within a single process. Cold start is ~10–20 s on CPU for the pair. Each subsequent translation is ~100–500 ms per sentence. For one-shot file rewrites this is fine; for high-frequency usage promote to a persistent sidecar (FastAPI on `localhost:7891`) and have the wrapper POST to it.
+No `models/` directory. No `translate.py`. The skill is ~12 KB of Python total.
 
 ## Boundaries
 
@@ -212,35 +159,43 @@ Hard rules baked into SKILL.md:
 - Never run on `.py`, `.js`, `.ts`, `.tsx`, `.jsx`, `.json`, `.yaml`, `.yml`, `.go`, `.rs`, `.java`, `.c`, `.cpp`, `.h`, `.sql`.
 - Never touch lines containing `WARNING`, `DANGER`, `IRREVERSIBLE`, `rm -rf`, `DROP TABLE`, `force-push`, `--no-verify` — leave English verbatim.
 - Never overwrite the source without first writing `<file>.original.md`.
-- Never skip the round-trip validation. The MT pipeline is lossy; validation is what makes the skill safe to use unattended.
+- Anything between `<!-- preserve --> ... <!-- /preserve -->` stays English verbatim in both modes.
 
-## Optional hook variant
+## Smoke-test results (2026-05)
 
-If automatic compression on every Write/Edit is wanted (rather than explicit invocation), a `PostToolUse` hook in `settings.json` can detect a `<!-- compress:wenyan -->` marker in the first 200 bytes of the written file and trigger the pipeline:
+| Test | Engine | tokens_in → out | % saved |
+|---|---|---|---|
+| Tech prose (JWT migration doc) | output / regex | 652 → 625 | 4.1% |
+| Tech prose (JWT migration doc) | output / **spacy** (default) | 652 → 604 | **7.4%** |
+| Jargon-heavy (synthetic, lots of `synchronization`/`infrastructure`) | output / regex | 191 → 181 | 5.2% |
+| Jargon-heavy | output / **spacy** + jargon | 191 → 169 | **11.5%** |
+| Chat-style AI text | output / regex | 252 → 207 | 17.9% |
+| Chat-style AI text | output / **spacy** + jargon | 252 → 195 | **22.6%** |
+| Chat-style AI text | output / **deep** (Claude `full`) | 252 → 102 | **59.5%** |
+| Tech-AI Q&A (Postgres) | output / **deep** (Claude `full`) | 496 → 267 | **46.2%** |
+| Tech doc (JWT migration) | output / **deep** = input / `full` | 652 → 538 | **17.5%** |
 
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash ~/.claude/skills/prompt-compress/scripts/compress.sh --auto"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+**Deep-mode savings track filler density, not topic.** Documentation-style tech writing is already terse (~15-20% saved). AI-output tech writing carries pleasantries (`Great question!`, `I'd be happy to`, `Hope this helps!`) and saves much more (~45-60%). Decide per-source, not per-genre.
 
-The `--auto` flag would tell the script to read `tool_input.file_path` from stdin (Claude Code passes hook event JSON on stdin), check for the marker, and either run the pipeline or exit silently. This is **not** wired by default — the slash-command flow is preferred until the round-trip validation is proven on real content.
+**Failed approaches (kept here as warnings):**
+- Output ZH reverse-translation (`opus-mt-zh-en`): hallucinated proper nouns ("Slack" → "Shrek"), mangled URLs. Removed.
+- Input EN → modern ZH (`opus-mt-en-zh`): chars −58%, tokens **+63%** under o200k_base. Verbose Chinese MT output defeats the Han-density advantage. Removed.
+- Vowel stripping / consonant compression: chars −25%, tokens **+54%**. BPE punishes deviations from corpus distribution. Never built into the skill.
+- Naive jargon dict (`database` → `db`, etc.): chars down, tokens flat or up — `database` and `db` are both 1 token under o200k_base. Replaced with a verifier-filtered dict.
+
+## Smart jargon dict — discipline
+
+The jargon abbreviation pass is gated by an **empirical verifier**: at module-load time, each candidate is run through `tiktoken.get_encoding("o200k_base")` and kept only if `len(encode(orig)) > len(encode(abbr))`. As of writing, 11 of 29 hand-picked candidates survive verification. Notable rejections:
+
+- `database` → `db`: both 1 token, no gain
+- `repository` → `repo`: both 1 token, no gain
+- `authorization` → `authz`: 1 token → **2 tokens**, would COST tokens
+- `application`, `environment`, `documentation`: all already 1 token
+
+The 11 entries that pass tend to be longer/less common: `synchronization` (3t → 1t, biggest win), `infrastructure`, `specification`, `documentations` (plural — singular is 1t but plural is 2t), `authentications`, `configurations`. The dict can grow but every entry must pass the verifier.
 
 ## Open design questions
 
-1. **Round-trip preservation rate.** EN → ZH → Wenyan typically loses 15–30 % of facts on first pass; the validation step is what catches losses. Could be improved by training a single EN→Wenyan adapter on top of a larger MT model — out of scope for this skill.
-2. **Why two hops, not one?** `raynardj/wenyanwen-chinese-translate-to-ancient` only accepts modern Chinese as input. A direct EN→Wenyan model would be one fewer hop, but the available HuggingFace candidates are noticeably weaker than the two-hop pipeline. Two clean hops beats one bad one.
-3. **GPU?** Optional. CPU works for prompts up to a few thousand words. For 50 KB+ docs, GPU cuts wall-clock from ~30 s to ~3 s.
-4. **Fallback when validation fails?** The skill currently aborts. An alternative is to fall back to the English caveman compression alone (no Wenyan), with a warning, so the user gets at least *some* token reduction.
+1. **Should `--intensity ultra` ship?** Wilpel's SPEC explicitly calls out telegraphic ambiguity as an anti-pattern, which is what `ultra` produces. Default `full` is the safer ceiling. Ship `ultra` as opt-in only.
+2. **Statusline savings badge** (à la JuliusBrussee/caveman) — not built. Would need a hook to tally cumulative savings across sessions.
+3. **MCP middleware that compresses tool descriptions before they hit the model context** (à la `caveman-shrink`) — out of scope for this skill, separate concern.
