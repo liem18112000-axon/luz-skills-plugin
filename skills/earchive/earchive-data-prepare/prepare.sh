@@ -31,6 +31,8 @@ FOLDER_COUNT="${FOLDER_COUNT:-30}"
 MAX_NESTED="${MAX_NESTED:-3}"
 MAX_FOLDERS_PER_DOC="${MAX_FOLDERS_PER_DOC:-10}"
 BATCH_SIZE="${BATCH_SIZE:-1000}"
+MATERIALIZE="${MATERIALIZE:-true}"
+RESTRICTED_FOLDER_PCT="${RESTRICTED_FOLDER_PCT:-75}"
 CONFIRM="${CONFIRM:-}"
 
 echo "[prepare] tenant            = $TENANT_ID"
@@ -39,11 +41,13 @@ echo "[prepare] folder count      = $FOLDER_COUNT"
 echo "[prepare] max nested        = $MAX_NESTED"
 echo "[prepare] max folders/doc   = $MAX_FOLDERS_PER_DOC"
 echo "[prepare] batch size        = $BATCH_SIZE"
+echo "[prepare] materialize       = $MATERIALIZE"
+echo "[prepare] restricted pct    = $RESTRICTED_FOLDER_PCT"
 echo "[prepare] namespace         = $NAMESPACE"
 echo "[prepare] sts base          = $STS_NAME"
 echo "[prepare] confirm truncate  = ${CONFIRM:-(unset — will refuse)}"
 
-export TENANT_ID DOC_COUNT FOLDER_COUNT MAX_NESTED MAX_FOLDERS_PER_DOC BATCH_SIZE PORT CONFIRM
+export TENANT_ID DOC_COUNT FOLDER_COUNT MAX_NESTED MAX_FOLDERS_PER_DOC BATCH_SIZE MATERIALIZE RESTRICTED_FOLDER_PCT PORT CONFIRM
 
 start_pf() {
     local pod="$1"

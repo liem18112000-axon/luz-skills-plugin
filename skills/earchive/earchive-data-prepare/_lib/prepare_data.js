@@ -1,7 +1,10 @@
 // earchive-data-prepare core. Two roles:
 //   MODE=probe    — try a single insert+drop on a namespaced probe collection;
 //                   exit 0 on primary, exit 2 on secondary, exit 1 on error.
-//   (default)     — assumes already on primary, then truncate + regenerate.
+//   (default)     — assumes already on primary, then truncate + regenerate
+//                   (and, when MATERIALIZE != '0'/'false', stamp the
+//                   _effectiveSecurityClassCodes / _hasPublicFolder / _folderNames
+//                   materialize fields on every fresh document).
 
 const { MongoClient, ObjectId } = require('mongodb');
 
@@ -13,8 +16,23 @@ const maxFoldersPerDoc   = Math.max(1, parseInt(process.env.MAX_FOLDERS_PER_DOC 
 const batchSize          = Math.max(100, parseInt(process.env.BATCH_SIZE || '1000', 10));
 const port               = process.env.PORT || '27017';
 const mode               = process.env.MODE || 'generate';
+const materializeFlag    = (process.env.MATERIALIZE || 'true').toLowerCase();
+const materializeEnabled = materializeFlag !== '0' && materializeFlag !== 'false' && materializeFlag !== 'no';
+const restrictedPct      = Math.min(100, Math.max(0, parseInt(process.env.RESTRICTED_FOLDER_PCT || '75', 10)));
+const restrictedRatio    = restrictedPct / 100;
 
 const PROBE_COLLECTION   = '_earchive_data_prepare_probe';
+const CODE_POOL          = ['CONFIDENTIAL', 'INTERNAL', 'SECRET', 'HR', 'FINANCE', 'LEGAL', 'EXEC'];
+
+// Mirrors MaterializeConstants in luz_docs (post-rename).
+const EFFECTIVE_SECURITY_CLASS_CODES = '_effectiveSecurityClassCodes';
+const HAS_PUBLIC_FOLDER              = '_hasPublicFolder';
+const FOLDER_NAMES                   = '_folderNames';
+
+// Mirrors FolderMetadataConstants / BaseMetadataConstants.
+const FOLDER_NAME             = 'name';
+const FOLDER_OWN_CODES        = 'securityClassCodes';
+const FOLDER_INHERITED_CODES  = 'inheritedSecurityClassCodes';
 
 const uri = `mongodb://${tenantId}:${tenantId}@localhost:${port}/${tenantId}`
     + `?authSource=${tenantId}&readPreference=primary&ssl=false&directConnection=true`;
@@ -37,41 +55,144 @@ async function probe(db) {
     }
 }
 
+function randomCodeSubset(min, max) {
+    const n = randInt(min, Math.min(max, CODE_POOL.length));
+    const pool = CODE_POOL.slice();
+    const out = [];
+    for (let i = 0; i < n; i++) {
+        const idx = Math.floor(Math.random() * pool.length);
+        out.push(pool.splice(idx, 1)[0]);
+    }
+    return out;
+}
+
 function buildFolderTree(count, maxDepth) {
     const folders = [];
     const ids = Array.from({ length: count }, () => new ObjectId());
     const depth = new Array(count).fill(0);
+    const ownPerIdx = new Array(count);
+    const inheritedPerIdx = new Array(count);
     const rootCount = Math.max(1, Math.ceil(count / Math.pow(2, maxDepth)));
 
     for (let i = 0; i < count; i++) {
+        let parentIdx = null;
         if (i < rootCount) {
-            folders.push({
-                _id: ids[i],
-                name: `folder-${i}`,
-                parentFolderId: null,
-                depth: 0,
-                securityClassCode: [],
-                inheritedSecurityClassCode: [],
-            });
+            depth[i] = 0;
         } else {
-            // Pick a parent from earlier folders that's still below maxDepth-1.
             const candidates = [];
             for (let j = 0; j < i; j++) {
                 if (depth[j] < maxDepth - 1) candidates.push(j);
             }
-            const parentIdx = candidates.length > 0 ? pickRandom(candidates) : 0;
+            parentIdx = candidates.length > 0 ? pickRandom(candidates) : 0;
             depth[i] = depth[parentIdx] + 1;
-            folders.push({
-                _id: ids[i],
-                name: `folder-${i}`,
-                parentFolderId: ids[parentIdx],
-                depth: depth[i],
-                securityClassCode: [],
-                inheritedSecurityClassCode: [],
-            });
         }
+
+        // Inherited = parent's own ∪ inherited (transitively). Empty for roots.
+        const parentEffective = parentIdx !== null
+            ? Array.from(new Set([...ownPerIdx[parentIdx], ...inheritedPerIdx[parentIdx]]))
+            : [];
+
+        // Own codes: this folder is "restricted" with probability restrictedRatio.
+        const own = Math.random() < restrictedRatio ? randomCodeSubset(1, 3) : [];
+
+        ownPerIdx[i] = own;
+        inheritedPerIdx[i] = parentEffective;
+
+        folders.push({
+            _id: ids[i],
+            name: `folder-${i}`,
+            parentFolderId: parentIdx !== null ? ids[parentIdx] : null,
+            depth: depth[i],
+            securityClassCodes: own,
+            inheritedSecurityClassCodes: parentEffective,
+        });
     }
     return folders;
+}
+
+// Mirrors MaterializeStateComputer.compute() in luz_docs.
+function computeMaterialize(folderIds, byId) {
+    const isEmpty = (arr) => !Array.isArray(arr) || arr.length === 0;
+    if (isEmpty(folderIds)) {
+        return { codes: [], hasPublic: false, names: [] };
+    }
+    const distinct = Array.from(new Set(folderIds.map(String)));
+    const union = new Set();
+    const names = new Set();
+    let hasPublic = false;
+    for (const fid of distinct) {
+        const folder = byId.get(fid);
+        if (!folder) continue;
+        const name = folder[FOLDER_NAME];
+        if (name) names.add(name);
+        const own = folder[FOLDER_OWN_CODES];
+        const inherited = folder[FOLDER_INHERITED_CODES];
+        if (isEmpty(own) && isEmpty(inherited)) {
+            hasPublic = true;
+            continue;
+        }
+        if (Array.isArray(own)) own.forEach((c) => union.add(c));
+        if (Array.isArray(inherited)) inherited.forEach((c) => union.add(c));
+    }
+    return { codes: Array.from(union), hasPublic, names: Array.from(names) };
+}
+
+async function materialize(db) {
+    const folders = await db.collection('folders')
+        .find({}, { projection: { _id: 1, [FOLDER_NAME]: 1, [FOLDER_OWN_CODES]: 1, [FOLDER_INHERITED_CODES]: 1 } })
+        .toArray();
+    const byId = new Map(folders.map((f) => [String(f._id), f]));
+    console.log(`[materialize] folders cached: ${byId.size}`);
+
+    const matchFilter = { [EFFECTIVE_SECURITY_CLASS_CODES]: { $exists: false } };
+    const total = await db.collection('documents').countDocuments(matchFilter);
+    console.log(`[materialize] documents to materialize: ${total}`);
+    if (total === 0) return;
+
+    let processed = 0;
+    let openDocs = 0;
+    let restrictedWithCodes = 0;
+    let restrictedNoCodes = 0;
+    const startedAt = Date.now();
+
+    while (true) {
+        const batch = await db.collection('documents')
+            .find(matchFilter, { projection: { _id: 1, folderIds: 1 } })
+            .limit(batchSize)
+            .toArray();
+        if (batch.length === 0) break;
+
+        const ops = batch.map((doc) => {
+            const { codes, hasPublic, names } = computeMaterialize(doc.folderIds, byId);
+            if (hasPublic) openDocs++;
+            else if (codes.length > 0) restrictedWithCodes++;
+            else restrictedNoCodes++;
+            return {
+                updateOne: {
+                    filter: { _id: doc._id },
+                    update: {
+                        $set: {
+                            [EFFECTIVE_SECURITY_CLASS_CODES]: codes,
+                            [HAS_PUBLIC_FOLDER]: hasPublic,
+                            [FOLDER_NAMES]: names,
+                        },
+                    },
+                },
+            };
+        });
+
+        const result = await db.collection('documents').bulkWrite(ops, { ordered: false });
+        processed += result.modifiedCount;
+        const elapsedSec = ((Date.now() - startedAt) / 1000).toFixed(1);
+        console.log(`[materialize]   batch: matched=${result.matchedCount} modified=${result.modifiedCount} | processed=${processed}/${total} | elapsed=${elapsedSec}s`);
+
+        if (batch.length < batchSize) break;
+    }
+
+    console.log(`[materialize] done. processed=${processed}`);
+    console.log(`[materialize]   open (hasPublicFolder=true):    ${openDocs}`);
+    console.log(`[materialize]   restricted with codes:          ${restrictedWithCodes}`);
+    console.log(`[materialize]   restricted no codes (no folder): ${restrictedNoCodes}`);
 }
 
 async function generate(db) {
@@ -84,7 +205,7 @@ async function generate(db) {
     }
 
     console.log(`[prepare] tenant: ${tenantId}`);
-    console.log(`[prepare] sizing: docs=${docCount} folders=${folderCount} maxNested=${maxNested} maxFoldersPerDoc=${maxFoldersPerDoc} batch=${batchSize}`);
+    console.log(`[prepare] sizing: docs=${docCount} folders=${folderCount} maxNested=${maxNested} maxFoldersPerDoc=${maxFoldersPerDoc} batch=${batchSize} restrictedFolderPct=${restrictedPct}`);
 
     const before = {
         folders:   await db.collection('folders').estimatedDocumentCount(),
@@ -139,6 +260,13 @@ async function generate(db) {
     };
     console.log(`[prepare] post-generate: folders=${after.folders} documents=${after.documents}`);
     console.log(`[prepare] total elapsed: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+
+    if (materializeEnabled) {
+        console.log('[prepare] materialize step enabled — stamping fresh docs');
+        await materialize(db);
+    } else {
+        console.log('[prepare] materialize step skipped (MATERIALIZE=0/false/no)');
+    }
 }
 
 async function main() {
